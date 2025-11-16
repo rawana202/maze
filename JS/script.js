@@ -70,7 +70,7 @@ const overlayCanvas = document.getElementById("overlayCanvas");
 const mazeCtx = mazeCanvas.getContext("2d", { willReadFrequently: true });
 const overlayCtx = overlayCanvas.getContext("2d");
 
-let player = { x: 330, y: 50, speed: 5 };
+let player = { x: 330, y: 50, speed: 1 };
 const SCALE = 0.7;
 const SPRITE_SIZE = 50;
 const SPRITE_HALF = SPRITE_SIZE / 2;
