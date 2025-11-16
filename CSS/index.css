@@ -1,0 +1,45 @@
+body {
+  /* text-align: center; */
+  margin : 0px 27%;
+  background: #f0f0f0;
+  font-family: sans-serif;
+}
+
+#stage {
+  position: relative;
+  display: inline-block;
+   top: 0;
+  left: 0;
+}
+
+canvas {
+  position: absolute;
+ 
+}
+
+
+/* 
+*{box-sizing:border-box;font-family: "Noto Sans", Arial, sans-serif}
+body{display:flex;flex-direction:column;align-items:center;padding:18px;background:#faf7ee;color:#222;min-height:100vh}
+h1{margin:6px 0 12px}
+.controls{display:flex;gap:12px;align-items:center;margin-bottom:10px}
+.controls label{font-size:14px;color:#3b3b3b}
+#stage{position:relative;display:inline-block;border:6px solid #cfd3c3;border-radius:8px;background:#fff}
+canvas{display:block;position:absolute;left:0;top:0;touch-action:none}
+#mazeCanvas{z-index:0}
+#overlayCanvas{z-index:1;pointer-events:none}
+.hint{max-width:760px;text-align:center;color:#6b6b6b;margin-top:12px}
+#info{color:#487a2b;font-weight:600}
+
+/* 
+
+@font-face {
+  font-family: 'MyWebFont';
+  src: url('../webfonts/myfont.woff2') format('woff2');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+body { font-family: 'MyWebFont', Arial, sans-serif; } 
+*/ 
+
