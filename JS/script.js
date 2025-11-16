@@ -64,7 +64,6 @@ const BOY_SRC = "IMG/boy.png";
 
 const mazeCanvas = document.getElementById("mazeCanvas");
 const overlayCanvas = document.getElementById("overlayCanvas");
-
 const mazeCtx = mazeCanvas.getContext("2d", { willReadFrequently: true });
 const overlayCtx = overlayCanvas.getContext("2d");
 
@@ -76,11 +75,11 @@ const SPRITE_HALF = SPRITE_SIZE / 2;
 let mazeImg = new Image();
 let boyImg = new Image();
 
-let maskData = null;
-
 const pathAudio = new Audio('SOUNDS/path.mp3');
 pathAudio.loop = true;
 let audioPlaying = false;
+
+let moveInterval = null;
 
 function loadImage(src) {
   return new Promise((resolve, reject) => {
@@ -94,15 +93,10 @@ function loadImage(src) {
 async function init() {
   try {
     [mazeImg, boyImg] = await Promise.all([loadImage(MAZE_SRC), loadImage(BOY_SRC)]);
-
     const scaledWidth = Math.round(mazeImg.width * SCALE);
     const scaledHeight = Math.round(mazeImg.height * SCALE);
-
-    mazeCanvas.width = scaledWidth;
-    mazeCanvas.height = scaledHeight;
-    overlayCanvas.width = scaledWidth;
-    overlayCanvas.height = scaledHeight;
-
+    mazeCanvas.width = overlayCanvas.width = scaledWidth;
+    mazeCanvas.height = overlayCanvas.height = scaledHeight;
     drawScene();
     setupControls();
   } catch (err) {
@@ -118,8 +112,6 @@ function drawBoy() {
 function drawScene() {
   mazeCtx.clearRect(0, 0, mazeCanvas.width, mazeCanvas.height);
   mazeCtx.drawImage(mazeImg, 0, 0, mazeCanvas.width, mazeCanvas.height);
-
-  overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
   drawBoy();
 
   const cx = player.x + SPRITE_HALF;
@@ -145,7 +137,6 @@ function canMoveWithBuffer(newX, newY) {
   const buffer = 10;
   const centerX = newX + SPRITE_HALF;
   const centerY = newY + SPRITE_HALF;
-
   const pointsToCheck = [
     [centerX, centerY],
     [centerX + buffer, centerY],
@@ -153,10 +144,7 @@ function canMoveWithBuffer(newX, newY) {
     [centerX, centerY + buffer],
     [centerX, centerY - buffer],
   ];
-
-  for (const [px, py] of pointsToCheck) {
-    if (!canMoveTo(px, py)) return false;
-  }
+  for (const [px, py] of pointsToCheck) if (!canMoveTo(px, py)) return false;
   return true;
 }
 
@@ -175,16 +163,29 @@ function isAtEnd(cx, cy) {
   const [lx, ly] = fullPath[fullPath.length - 1];
   const dx = lx - cx;
   const dy = ly - cy;
-  const dist = Math.sqrt(dx*dx + dy*dy);
-  return dist <= 12;
+  return Math.sqrt(dx*dx + dy*dy) <= 12;
 }
 
 function setupControls() {
-  // Keyboard
-  window.addEventListener("keydown", e => handleMoveKey(e.key));
+  // Keyboard continuous movement
+  window.addEventListener("keydown", e => {
+    if (!["ArrowUp","ArrowDown","ArrowLeft","ArrowRight"].includes(e.key)) return;
+    if (moveInterval) return;
+    handleMoveKey(e.key); // initial move
+    moveInterval = setInterval(() => handleMoveKey(e.key), 50);
+  });
+
+  window.addEventListener("keyup", e => {
+    if (["ArrowUp","ArrowDown","ArrowLeft","ArrowRight"].includes(e.key)) {
+      clearInterval(moveInterval);
+      moveInterval = null;
+    }
+  });
+
+  // Prevent page scroll on arrows
   window.addEventListener("keydown", e => {
     if (["ArrowUp","ArrowDown","ArrowLeft","ArrowRight"," "].includes(e.key)) e.preventDefault();
-  });
+  }, false);
 
   // Buttons
   const btns = [
@@ -193,10 +194,14 @@ function setupControls() {
     { id: "leftBtn", key: "ArrowLeft" },
     { id: "rightBtn", key: "ArrowRight" }
   ];
-
   btns.forEach(b => {
     const el = document.getElementById(b.id);
-    el.addEventListener("click", () => handleMoveKey(b.key));
+    el.addEventListener("mousedown", () => {
+      if (moveInterval) clearInterval(moveInterval);
+      moveInterval = setInterval(() => handleMoveKey(b.key), 50);
+    });
+    el.addEventListener("mouseup", () => { clearInterval(moveInterval); moveInterval = null; });
+    el.addEventListener("mouseleave", () => { clearInterval(moveInterval); moveInterval = null; });
   });
 
   // Touch swipe
@@ -211,13 +216,17 @@ function setupControls() {
     const endY = e.changedTouches[0].clientY;
     const dx = endX - startX;
     const dy = endY - startY;
-
-    if(Math.abs(dx) > Math.abs(dy)) {
-      handleMoveKey(dx > 0 ? "ArrowRight" : "ArrowLeft");
-    } else {
-      handleMoveKey(dy > 0 ? "ArrowDown" : "ArrowUp");
-    }
+    if(Math.abs(dx) > Math.abs(dy)) handleMoveKey(dx > 0 ? "ArrowRight" : "ArrowLeft");
+    else handleMoveKey(dy > 0 ? "ArrowDown" : "ArrowUp");
   });
+
+  // Prevent double-tap zoom
+  let lastTouch = 0;
+  overlayCanvas.addEventListener("touchend", e => {
+    const now = Date.now();
+    if (now - lastTouch <= 300) e.preventDefault();
+    lastTouch = now;
+  }, { passive: false });
 }
 
 async function handleMoveKey(key) {
@@ -253,201 +262,3 @@ async function handleMoveKey(key) {
 }
 
 init();
-
-
-
-
-
-// const MAZE_SRC = "IMG/maze_original.png";
-// const BOY_SRC = "IMG/boy.png";
-
-// const mazeCanvas = document.getElementById("mazeCanvas");
-// const overlayCanvas = document.getElementById("overlayCanvas");
-
-// const mazeCtx = mazeCanvas.getContext("2d", { willReadFrequently: true });
-// const overlayCtx = overlayCanvas.getContext("2d");
-
-// let player = { x: 330, y: 50, speed: 5 };
-
-// const SCALE = 0.7;
-
-// const SPRITE_SIZE = 50;
-// const SPRITE_HALF = SPRITE_SIZE / 2;
-
-// let mazeImg = new Image();
-// let boyImg = new Image();
-
-// let maskData = null;
-
-
-// const pathAudio = new Audio('SOUNDS/path.mp3');
-// pathAudio.loop = true;
-// let audioPlaying = false; 
-
-// function loadImage(src) {
-//   return new Promise((resolve, reject) => {
-//     const img = new Image();
-//     img.onload = () => resolve(img);
-//     img.onerror = () => reject(`Failed to load: ${src}`);
-//     img.src = src;
-//   });
-// }
-
-// async function init() {
-//   try {
-//     [mazeImg, boyImg] = await Promise.all([
-//       loadImage(MAZE_SRC),
-//       loadImage(BOY_SRC),
-//     ]);
-
-//     const scaledWidth = Math.round(mazeImg.width * SCALE);
-//     const scaledHeight = Math.round(mazeImg.height * SCALE);
-
-//     mazeCanvas.width = scaledWidth;
-//     mazeCanvas.height = scaledHeight;
-//     overlayCanvas.width = scaledWidth;
-//     overlayCanvas.height = scaledHeight;
-
-//     drawScene();
-//     setupControls();
-
-//   } catch (err) {
-//     console.error(err);
-//   }
-// }
-
-// function drawBoy() {
-//   overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
-//   overlayCtx.drawImage(boyImg, player.x, player.y, SPRITE_SIZE, SPRITE_SIZE);
-// }
-
-// function drawScene() {
-//   mazeCtx.clearRect(0, 0, mazeCanvas.width, mazeCanvas.height);
-//   mazeCtx.drawImage(mazeImg, 0, 0, mazeCanvas.width, mazeCanvas.height);
-
-//   overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
-
-//   drawBoy();
-
-//   const cx = player.x + SPRITE_HALF;
-//   const cy = player.y + SPRITE_HALF;
-//   if (isOnPath(cx, cy)) {
-//     overlayCtx.save();
-//     overlayCtx.strokeStyle = "rgba(0,255,0,0.5)";
-//     overlayCtx.lineWidth = 15;
-//     overlayCtx.shadowColor = "rgba(0,255,0,0.7)";
-//     overlayCtx.shadowBlur = 20;
-//     overlayCtx.strokeRect(0, 0, overlayCanvas.width, overlayCanvas.height);
-//     overlayCtx.restore();
-//   }
-// }
-
-// function canMoveTo(x, y) {
-//   const imgData = mazeCtx.getImageData(Math.round(x), Math.round(y), 1, 1).data;
-//   const [r, g, b] = imgData;
-//   return r > 100 && g > 100 && b > 100;
-// }
-
-// function canMoveWithBuffer(newX, newY) {
-//   const buffer = 10;
-//   const centerX = newX + SPRITE_HALF;
-//   const centerY = newY + SPRITE_HALF;
-
-//   const pointsToCheck = [
-//     [centerX, centerY],
-//     [centerX + buffer, centerY],
-//     [centerX - buffer, centerY],
-//     [centerX, centerY + buffer],
-//     [centerX, centerY - buffer],
-//   ];
-
-//   for (const [px, py] of pointsToCheck) {
-//     if (!canMoveTo(px, py)) return false;
-//   }
-//   return true;
-// }
-
-// function isOnPath(cx, cy) {
-//   const buffer = 10;
-//   for (const [px, py] of fullPath) {
-//     const dx = px - cx;
-//     const dy = py - cy;
-//     if (Math.sqrt(dx*dx + dy*dy) <= buffer) return true;
-//   }
-//   return false;
-// }
-
-// // يشيك لو قرب آخر نقطة (النهاية)
-// function isAtEnd(cx, cy) {
-//   if (!fullPath.length) return false;
-//   const [lx, ly] = fullPath[fullPath.length - 1];
-//   const dx = lx - cx;
-//   const dy = ly - cy;
-//   const dist = Math.sqrt(dx*dx + dy*dy);
-//   return dist <= 12; // عتبة صغيرة لاعتبار الوصول للنهاية
-// }
-
-// function setupControls() {
-//   window.addEventListener("keydown", async (e) => {
-//     let newX = player.x;
-//     let newY = player.y;
-
-//     switch (e.key) {
-//       case "ArrowUp": newY -= player.speed; break;
-//       case "ArrowDown": newY += player.speed; break;
-//       case "ArrowLeft": newX -= player.speed; break;
-//       case "ArrowRight": newX += player.speed; break;
-//       default: return;
-//     }
-
-//     if (canMoveWithBuffer(newX, newY)) {
-//       player.x = newX;
-//       player.y = newY;
-//     }
-
-//     const cx = player.x + SPRITE_HALF;
-//     const cy = player.y + SPRITE_HALF;
-
-//     // ---- تحكم بالصوت بناءً على إن على الطريق ولا لأ ----
-//     const onPath = isOnPath(cx, cy);
-//     const atEnd = isAtEnd(cx, cy);
-
-//     if (onPath) {
-//       // لو مش شغّال، حاول نشغله
-//       if (!audioPlaying) {
-//         // بعض المتصفحات تمنع التشغيل الأوتوماتيكي دون تفاعل؛ 
-//         // هنا بنحاول تشغيل الصوت، وإذا حصل خطأ نلتقطه بهدوء
-//         pathAudio.play().catch((err) => {
-//           // ممكن يظهر خطأ بسبب سياسة autoplay؛ لما المستخدم يتفاعل (keydown) الغالب يشتغل
-//           console.warn("Could not autoplay path sound yet:", err);
-//         });
-//         audioPlaying = true;
-//       }
-//       // لو وصل للنهاية نعيد التشغيل من البداية علطول لتسمعيه يتعاد
-//       if (atEnd) {
-//         try {
-//           pathAudio.currentTime = 0;
-//           await pathAudio.play();
-//           audioPlaying = true;
-//         } catch (err) {
-//           console.warn("Could not restart sound at end:", err);
-//         }
-//       }
-//     } else {
-//       // لو خرج من الطريق وقف الصوت
-//       if (audioPlaying) {
-//         pathAudio.pause();
-//         audioPlaying = false;
-//       }
-//     }
-
-//     console.log("[",cx,",", cy,"]");
-//     drawScene();
-//   });
-
-//   window.addEventListener("keydown", function (e) {
-//     if (["ArrowUp","ArrowDown","ArrowLeft","ArrowRight"," "].includes(e.key)) e.preventDefault();
-//   }, false);
-// }
-
-// init();
