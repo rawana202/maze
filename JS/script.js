@@ -90,7 +90,7 @@ const keysDown = {};
 let touchActive = false;
 let touchDir = null;
 const touchThreshold = 15;
-const touchSpeedMultiplier = 1.6;
+const touchSpeedMultiplier = 1.0;
 
 // -------- helper لتحميل الصور --------
 function loadImage(src) {
