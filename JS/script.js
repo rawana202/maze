@@ -92,6 +92,10 @@ let touchDir = null;
 const touchThreshold = 15;
 const touchSpeedMultiplier = 1.0;
 
+// -------- GAMEPAD variables (added) --------
+let gamepadIndex = null;
+const GAMEPAD_AXIS_THRESHOLD = 0.35; // threshold for analog stick
+
 // -------- helper لتحميل الصور --------
 function loadImage(src) {
   return new Promise((resolve, reject) => {
@@ -118,7 +122,7 @@ async function init() {
     drawScene();
     setupControls();
 
-    // ابدأ حلقة الأنيميشن اللي تتعامل مع الضغط الطويل/اللمس
+    // start animation loop that handles long-press/touch and gamepad
     requestAnimationFrame(animate);
   } catch (err) {
     console.error(err);
@@ -205,8 +209,46 @@ function isAtEnd(cx, cy) {
   return dist <= 12;
 }
 
+// -------- GAMEPAD handling (added) --------
+window.addEventListener("gamepadconnected", (e) => {
+  console.log("Gamepad connected:", e.gamepad);
+  gamepadIndex = e.gamepad.index;
+});
+
+window.addEventListener("gamepaddisconnected", (e) => {
+  console.log("Gamepad disconnected");
+  // if same index disconnected, clear
+  if (gamepadIndex === e.gamepad.index) gamepadIndex = null;
+});
+
+function pollGamepadToKeys() {
+  if (gamepadIndex === null) return;
+
+  const gp = navigator.getGamepads ? navigator.getGamepads()[gamepadIndex] : null;
+  if (!gp) return;
+
+  // Buttons: standard mapping - D-Pad usually buttons 12..15
+  const up = gp.buttons[12] && gp.buttons[12].pressed;
+  const down = gp.buttons[13] && gp.buttons[13].pressed;
+  const left = gp.buttons[14] && gp.buttons[14].pressed;
+  const right = gp.buttons[15] && gp.buttons[15].pressed;
+
+  // Axes: left stick 0 (x), 1 (y)
+  const ax = gp.axes && gp.axes.length > 0 ? gp.axes[0] : 0;
+  const ay = gp.axes && gp.axes.length > 1 ? gp.axes[1] : 0;
+
+  // map to keysDown (set true/false)
+  if (up || ay < -GAMEPAD_AXIS_THRESHOLD)   keysDown["ArrowUp"] = true;  else keysDown["ArrowUp"] = false;
+  if (down || ay > GAMEPAD_AXIS_THRESHOLD)  keysDown["ArrowDown"] = true; else keysDown["ArrowDown"] = false;
+  if (left || ax < -GAMEPAD_AXIS_THRESHOLD) keysDown["ArrowLeft"] = true; else keysDown["ArrowLeft"] = false;
+  if (right || ax > GAMEPAD_AXIS_THRESHOLD)keysDown["ArrowRight"] = true; else keysDown["ArrowRight"] = false;
+}
+
 // -------- حلقة أنيميشن للحركة المستمرة --------
 function animate() {
+  // poll gamepad each frame (keeps keysDown in sync)
+  pollGamepadToKeys();
+
   let moved = false;
 
   // keyboard continuous
@@ -261,7 +303,7 @@ function setupControls() {
   window.addEventListener("keydown", e => {
     if (["ArrowUp","ArrowDown","ArrowLeft","ArrowRight"].includes(e.key)) {
       keysDown[e.key] = true;
-      e.preventDefault(); // يمنع السك롤 الافتراضي
+      e.preventDefault(); // يمنع السكрол الافتراضي
     }
   });
   window.addEventListener("keyup", e => {
@@ -343,6 +385,11 @@ init();
 
 
 
+
+
+// // ---------------- full script.js (final) ----------------
+
+// // fullPath array (كل الإحداثيات اللى بعتيها)
 // const fullPath = [
 //   [355,80],[355,85],[355,90],[355,95],[355,100],[355,105],[355,110],[355,115],[355,120],
 //   [360,120],[365,120],[370,120],[375,120],[380,120],[385,120],[390,120],[395,120],
@@ -402,17 +449,17 @@ init();
 //   [355,645],[355,650]
 // ];
 
-
-
+// // مسارات الصور
 // const MAZE_SRC = "IMG/maze_original.png";
 // const BOY_SRC = "IMG/boy.png";
 
 // const mazeCanvas = document.getElementById("mazeCanvas");
 // const overlayCanvas = document.getElementById("overlayCanvas");
+
 // const mazeCtx = mazeCanvas.getContext("2d", { willReadFrequently: true });
 // const overlayCtx = overlayCanvas.getContext("2d");
 
-// let player = { x: 330, y: 50, speed: 5 };
+// let player = { x: 330, y: 50, speed: 0.4 };
 // const SCALE = 0.7;
 // const SPRITE_SIZE = 50;
 // const SPRITE_HALF = SPRITE_SIZE / 2;
@@ -420,12 +467,21 @@ init();
 // let mazeImg = new Image();
 // let boyImg = new Image();
 
+// let maskData = null;
+
+// // الصوت
 // const pathAudio = new Audio('SOUNDS/path.mp3');
 // pathAudio.loop = true;
 // let audioPlaying = false;
 
-// let moveInterval = null;
+// // ---- متغيرات للحركة المستمرة و touch ----
+// const keysDown = {};
+// let touchActive = false;
+// let touchDir = null;
+// const touchThreshold = 15;
+// const touchSpeedMultiplier = 1.0;
 
+// // -------- helper لتحميل الصور --------
 // function loadImage(src) {
 //   return new Promise((resolve, reject) => {
 //     const img = new Image();
@@ -435,21 +491,32 @@ init();
 //   });
 // }
 
+// // -------- init --------
 // async function init() {
 //   try {
 //     [mazeImg, boyImg] = await Promise.all([loadImage(MAZE_SRC), loadImage(BOY_SRC)]);
+
 //     const scaledWidth = Math.round(mazeImg.width * SCALE);
 //     const scaledHeight = Math.round(mazeImg.height * SCALE);
-//     mazeCanvas.width = overlayCanvas.width = scaledWidth;
-//     mazeCanvas.height = overlayCanvas.height = scaledHeight;
+
+//     mazeCanvas.width = scaledWidth;
+//     mazeCanvas.height = scaledHeight;
+//     overlayCanvas.width = scaledWidth;
+//     overlayCanvas.height = scaledHeight;
+
 //     drawScene();
 //     setupControls();
+
+//     // ابدأ حلقة الأنيميشن اللي تتعامل مع الضغط الطويل/اللمس
+//     requestAnimationFrame(animate);
 //   } catch (err) {
 //     console.error(err);
 //   }
 // }
 
+// // -------- رسم الولد و المشهد --------
 // function drawBoy() {
+//   // لا تمسح الـ overlay كله هنا لو في تأثيرات إضافية، لكن نحن بنمسحه ونعيد الرسم
 //   overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
 //   overlayCtx.drawImage(boyImg, player.x, player.y, SPRITE_SIZE, SPRITE_SIZE);
 // }
@@ -457,6 +524,9 @@ init();
 // function drawScene() {
 //   mazeCtx.clearRect(0, 0, mazeCanvas.width, mazeCanvas.height);
 //   mazeCtx.drawImage(mazeImg, 0, 0, mazeCanvas.width, mazeCanvas.height);
+
+//   // overlay: نرسم اللاعب ثم التأثير الأخضر لو على الطريق
+//   overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
 //   drawBoy();
 
 //   const cx = player.x + SPRITE_HALF;
@@ -472,8 +542,14 @@ init();
 //   }
 // }
 
+// // -------- فحص الاصطدام مع الجدران --------
 // function canMoveTo(x, y) {
-//   const imgData = mazeCtx.getImageData(Math.round(x), Math.round(y), 1, 1).data;
+//   // تأكد أننا داخل حدود الكانفاس
+//   const rx = Math.round(x);
+//   const ry = Math.round(y);
+//   if (rx < 0 || ry < 0 || rx >= mazeCanvas.width || ry >= mazeCanvas.height) return false;
+
+//   const imgData = mazeCtx.getImageData(rx, ry, 1, 1).data;
 //   const [r, g, b] = imgData;
 //   return r > 100 && g > 100 && b > 100;
 // }
@@ -482,6 +558,7 @@ init();
 //   const buffer = 10;
 //   const centerX = newX + SPRITE_HALF;
 //   const centerY = newY + SPRITE_HALF;
+
 //   const pointsToCheck = [
 //     [centerX, centerY],
 //     [centerX + buffer, centerY],
@@ -489,10 +566,14 @@ init();
 //     [centerX, centerY + buffer],
 //     [centerX, centerY - buffer],
 //   ];
-//   for (const [px, py] of pointsToCheck) if (!canMoveTo(px, py)) return false;
+
+//   for (const [px, py] of pointsToCheck) {
+//     if (!canMoveTo(px, py)) return false;
+//   }
 //   return true;
 // }
 
+// // -------- التحقق من وجود اللاعب قرب نقطة من المسار --------
 // function isOnPath(cx, cy) {
 //   const buffer = 10;
 //   for (const [px, py] of fullPath) {
@@ -503,107 +584,148 @@ init();
 //   return false;
 // }
 
+// // يشيك لو قرب آخر نقطة (النهاية)
 // function isAtEnd(cx, cy) {
 //   if (!fullPath.length) return false;
 //   const [lx, ly] = fullPath[fullPath.length - 1];
 //   const dx = lx - cx;
 //   const dy = ly - cy;
-//   return Math.sqrt(dx*dx + dy*dy) <= 12;
+//   const dist = Math.sqrt(dx*dx + dy*dy);
+//   return dist <= 12;
 // }
 
-// function setupControls() {
-//   // Keyboard continuous movement
-//   window.addEventListener("keydown", e => {
-//     if (!["ArrowUp","ArrowDown","ArrowLeft","ArrowRight"].includes(e.key)) return;
-//     if (moveInterval) return;
-//     handleMoveKey(e.key); // initial move
-//     moveInterval = setInterval(() => handleMoveKey(e.key), 50);
-//   });
+// // -------- حلقة أنيميشن للحركة المستمرة --------
+// function animate() {
+//   let moved = false;
 
+//   // keyboard continuous
+//   if (keysDown["ArrowUp"])    { if (canMoveWithBuffer(player.x, player.y - player.speed)) { player.y -= player.speed; moved = true; } }
+//   if (keysDown["ArrowDown"])  { if (canMoveWithBuffer(player.x, player.y + player.speed)) { player.y += player.speed; moved = true; } }
+//   if (keysDown["ArrowLeft"])  { if (canMoveWithBuffer(player.x - player.speed, player.y)) { player.x -= player.speed; moved = true; } }
+//   if (keysDown["ArrowRight"]) { if (canMoveWithBuffer(player.x + player.speed, player.y)) { player.x += player.speed; moved = true; } }
+
+//   // touch continuous movement (if set)
+//   if (touchActive && touchDir) {
+//     const s = Math.max(1, Math.round(player.speed * touchSpeedMultiplier));
+//     switch (touchDir) {
+//       case "up":    if (canMoveWithBuffer(player.x, player.y - s)) { player.y -= s; moved = true; } break;
+//       case "down":  if (canMoveWithBuffer(player.x, player.y + s)) { player.y += s; moved = true; } break;
+//       case "left":  if (canMoveWithBuffer(player.x - s, player.y)) { player.x -= s; moved = true; } break;
+//       case "right": if (canMoveWithBuffer(player.x + s, player.y)) { player.x += s; moved = true; } break;
+//     }
+//   }
+
+//   if (moved) {
+//     const cx = player.x + SPRITE_HALF;
+//     const cy = player.y + SPRITE_HALF;
+//     const onPath = isOnPath(cx, cy);
+//     const atEnd = isAtEnd(cx, cy);
+
+//     if (onPath) {
+//       if (!audioPlaying) {
+//         pathAudio.play().then(() => { audioPlaying = true; }).catch(()=>{ /* autoplay blocked until user interacts */ });
+//       }
+//       if (atEnd) {
+//         try {
+//           pathAudio.currentTime = 0;
+//           pathAudio.play().catch(()=>{});
+//         } catch (err) {}
+//       }
+//     } else {
+//       if (audioPlaying) {
+//         pathAudio.pause();
+//         audioPlaying = false;
+//       }
+//     }
+
+//     drawScene();
+//   }
+
+//   requestAnimationFrame(animate);
+// }
+
+// // -------- إعداد التحكم (كيبورد، أزرار على الشاشة، لمس/سوايب) --------
+// function setupControls() {
+//   // --- Keyboard: دعم مستمر بالضغط والافراج ---
+//   window.addEventListener("keydown", e => {
+//     if (["ArrowUp","ArrowDown","ArrowLeft","ArrowRight"].includes(e.key)) {
+//       keysDown[e.key] = true;
+//       e.preventDefault(); // يمنع السك롤 الافتراضي
+//     }
+//   });
 //   window.addEventListener("keyup", e => {
 //     if (["ArrowUp","ArrowDown","ArrowLeft","ArrowRight"].includes(e.key)) {
-//       clearInterval(moveInterval);
-//       moveInterval = null;
+//       keysDown[e.key] = false;
+//       e.preventDefault();
 //     }
 //   });
 
-//   // Prevent page scroll on arrows
-//   window.addEventListener("keydown", e => {
-//     if (["ArrowUp","ArrowDown","ArrowLeft","ArrowRight"," "].includes(e.key)) e.preventDefault();
-//   }, false);
-
-//   // Buttons
+//   // --- Buttons on-screen: mousedown / mouseup for continuous ---
 //   const btns = [
 //     { id: "upBtn", key: "ArrowUp" },
 //     { id: "downBtn", key: "ArrowDown" },
 //     { id: "leftBtn", key: "ArrowLeft" },
 //     { id: "rightBtn", key: "ArrowRight" }
 //   ];
+
 //   btns.forEach(b => {
 //     const el = document.getElementById(b.id);
-//     el.addEventListener("mousedown", () => {
-//       if (moveInterval) clearInterval(moveInterval);
-//       moveInterval = setInterval(() => handleMoveKey(b.key), 50);
-//     });
-//     el.addEventListener("mouseup", () => { clearInterval(moveInterval); moveInterval = null; });
-//     el.addEventListener("mouseleave", () => { clearInterval(moveInterval); moveInterval = null; });
+//     if (!el) return;
+//     el.addEventListener("mousedown", () => keysDown[b.key] = true);
+//     el.addEventListener("mouseup",   () => keysDown[b.key] = false);
+//     el.addEventListener("mouseleave",() => keysDown[b.key] = false);
+//     // touch equivalents for buttons
+//     el.addEventListener("touchstart", (ev) => { keysDown[b.key] = true; ev.preventDefault(); }, {passive:false});
+//     el.addEventListener("touchend",   (ev) => { keysDown[b.key] = false; ev.preventDefault(); }, {passive:false});
 //   });
 
-//   // Touch swipe
-//   let startX, startY;
-//   overlayCanvas.addEventListener("touchstart", e => {
+//   // --- Touch: swipe detection but make it responsive + continuous ---
+//   let startX = 0, startY = 0, lastTouchTime = 0;
+//   overlayCanvas.addEventListener("touchstart", (e) => {
+//     if (!e.touches || e.touches.length === 0) return;
 //     startX = e.touches[0].clientX;
 //     startY = e.touches[0].clientY;
-//   });
-
-//   overlayCanvas.addEventListener("touchend", e => {
-//     const endX = e.changedTouches[0].clientX;
-//     const endY = e.changedTouches[0].clientY;
-//     const dx = endX - startX;
-//     const dy = endY - startY;
-//     if(Math.abs(dx) > Math.abs(dy)) handleMoveKey(dx > 0 ? "ArrowRight" : "ArrowLeft");
-//     else handleMoveKey(dy > 0 ? "ArrowDown" : "ArrowUp");
-//   });
-
-//   // Prevent double-tap zoom
-//   let lastTouch = 0;
-//   overlayCanvas.addEventListener("touchend", e => {
+//     touchActive = true;
+//     touchDir = null;
+//     // منع double-tap zoom (best-effort)
 //     const now = Date.now();
-//     if (now - lastTouch <= 300) e.preventDefault();
-//     lastTouch = now;
-//   }, { passive: false });
+//     if (now - lastTouchTime < 300) e.preventDefault();
+//     lastTouchTime = now;
+//   }, {passive:false});
+
+//   overlayCanvas.addEventListener("touchmove", (e) => {
+//     if (!e.touches || e.touches.length === 0) return;
+//     const moveX = e.touches[0].clientX;
+//     const moveY = e.touches[0].clientY;
+//     const dx = moveX - startX;
+//     const dy = moveY - startY;
+
+//     if (Math.abs(dx) < touchThreshold && Math.abs(dy) < touchThreshold) {
+//       touchDir = null;
+//       return;
+//     }
+
+//     if (Math.abs(dx) > Math.abs(dy)) {
+//       touchDir = dx > 0 ? "right" : "left";
+//     } else {
+//       touchDir = dy > 0 ? "down" : "up";
+//     }
+
+//     e.preventDefault();
+//   }, {passive:false});
+
+//   overlayCanvas.addEventListener("touchend", (e) => {
+//     touchActive = false;
+//     touchDir = null;
+//     e.preventDefault();
+//   }, {passive:false});
+
+//   // لمنع التكبير بالضغط مرتين سريع (double-tap) على بعض المتصفحات (محاولة)
+//   overlayCanvas.addEventListener("gesturestart", (e) => { e.preventDefault(); }, {passive:false});
+
+//   // Also prevent double click zoom via dblclick on the overlay
+//   overlayCanvas.addEventListener("dblclick", (e) => { e.preventDefault(); }, {passive:false});
 // }
 
-// async function handleMoveKey(key) {
-//   let newX = player.x;
-//   let newY = player.y;
-
-//   switch (key) {
-//     case "ArrowUp": newY -= player.speed; break;
-//     case "ArrowDown": newY += player.speed; break;
-//     case "ArrowLeft": newX -= player.speed; break;
-//     case "ArrowRight": newX += player.speed; break;
-//     default: return;
-//   }
-
-//   if (canMoveWithBuffer(newX, newY)) {
-//     player.x = newX;
-//     player.y = newY;
-//   }
-
-//   const cx = player.x + SPRITE_HALF;
-//   const cy = player.y + SPRITE_HALF;
-//   const onPath = isOnPath(cx, cy);
-//   const atEnd = isAtEnd(cx, cy);
-
-//   if (onPath) {
-//     if (!audioPlaying) { pathAudio.play().catch(()=>{}); audioPlaying = true; }
-//     if (atEnd) { pathAudio.currentTime = 0; await pathAudio.play().catch(()=>{}); }
-//   } else {
-//     if (audioPlaying) { pathAudio.pause(); audioPlaying = false; }
-//   }
-
-//   drawScene();
-// }
-
+// // -------- ابدأ --------
 // init();
