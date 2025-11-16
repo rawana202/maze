@@ -221,19 +221,31 @@ window.addEventListener("gamepaddisconnected", (e) => {
   if (gamepadIndex === e.gamepad.index) gamepadIndex = null;
 });
 
-function pollGamepadToKeys() {
-  if (gamepadIndex === null) return;
+// helper: try to get best gamepad object (handles multiple connected)
+function getActiveGamepad() {
+  const gps = navigator.getGamepads ? navigator.getGamepads() : [];
+  if (!gps) return null;
+  if (gamepadIndex !== null) {
+    return gps[gamepadIndex] || null;
+  }
+  // fallback: choose first non-null
+  for (let i = 0; i < gps.length; i++) {
+    if (gps[i]) return gps[i];
+  }
+  return null;
+}
 
-  const gp = navigator.getGamepads ? navigator.getGamepads()[gamepadIndex] : null;
+function pollGamepadToKeys() {
+  const gp = getActiveGamepad();
   if (!gp) return;
 
-  // Buttons: standard mapping - D-Pad usually buttons 12..15
+  // Buttons: standard mapping - D-Pad usually buttons 12..15 (works on PS controllers too)
   const up = gp.buttons[12] && gp.buttons[12].pressed;
   const down = gp.buttons[13] && gp.buttons[13].pressed;
   const left = gp.buttons[14] && gp.buttons[14].pressed;
   const right = gp.buttons[15] && gp.buttons[15].pressed;
 
-  // Axes: left stick 0 (x), 1 (y)
+  // Axes: left stick 0 (x), 1 (y) — DualShock/DualSense follow standard mapping in most browsers
   const ax = gp.axes && gp.axes.length > 0 ? gp.axes[0] : 0;
   const ay = gp.axes && gp.axes.length > 1 ? gp.axes[1] : 0;
 
@@ -242,6 +254,28 @@ function pollGamepadToKeys() {
   if (down || ay > GAMEPAD_AXIS_THRESHOLD)  keysDown["ArrowDown"] = true; else keysDown["ArrowDown"] = false;
   if (left || ax < -GAMEPAD_AXIS_THRESHOLD) keysDown["ArrowLeft"] = true; else keysDown["ArrowLeft"] = false;
   if (right || ax > GAMEPAD_AXIS_THRESHOLD)keysDown["ArrowRight"] = true; else keysDown["ArrowRight"] = false;
+}
+
+// helper: trigger simple vibration if supported (safe-guarded)
+function tryVibrateGamepad(duration = 300, strong = 1.0, weak = 1.0) {
+  const gp = getActiveGamepad();
+  if (!gp) return;
+  try {
+    // Some browsers support gp.vibrationActuator.playEffect (Chrome)
+    if (gp.vibrationActuator && typeof gp.vibrationActuator.playEffect === "function") {
+      gp.vibrationActuator.playEffect("dual-rumble", {
+        duration: duration,
+        strongMagnitude: strong,
+        weakMagnitude: weak
+      }).catch(()=>{});
+    } else if (gp.hapticActuators && gp.hapticActuators.length) {
+      // experimental: other implementations
+      gp.hapticActuators[0].pulse(strong, duration).catch(()=>{});
+    }
+  } catch (err) {
+    // ignore if not supported
+    // console.warn("vibration failed", err);
+  }
 }
 
 // -------- حلقة أنيميشن للحركة المستمرة --------
@@ -282,6 +316,9 @@ function animate() {
         try {
           pathAudio.currentTime = 0;
           pathAudio.play().catch(()=>{});
+          // رن اهتزاز قصير كاحتفال عند الوصول للنهاية (لو الجهاز يدعم)
+          tryVibrateGamepad(500, 1.0, 1.0);
+          triggerCelebration();
         } catch (err) {}
       }
     } else {
@@ -296,6 +333,105 @@ function animate() {
 
   requestAnimationFrame(animate);
 }
+
+
+// -------- celebration (confetti + sound + stronger vibration) --------
+let celebrationActive = false;
+
+function playWinTone(duration = 800) {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.type = "sine";
+    o.frequency.value = 880; // A5
+    o.connect(g);
+    g.connect(ctx.destination);
+    g.gain.setValueAtTime(0, ctx.currentTime);
+    g.gain.linearRampToValueAtTime(0.15, ctx.currentTime + 0.02);
+    o.start();
+    g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + duration / 1000);
+    setTimeout(() => {
+      try { o.stop(); ctx.close(); } catch (e) {}
+    }, duration + 50);
+  } catch (e) {
+    // Some browsers block AudioContext until user gesture — ignore safely
+    console.warn("win tone blocked:", e);
+  }
+}
+
+// simple confetti canvas (drawn on overlayCanvas)
+function launchConfetti(duration = 2500, count = 120) {
+  const particles = [];
+  const w = overlayCanvas.width;
+  const h = overlayCanvas.height;
+  for (let i = 0; i < count; i++) {
+    particles.push({
+      x: Math.random() * w,
+      y: -10 - Math.random() * 200,
+      vx: (Math.random() - 0.5) * 6,
+      vy: 2 + Math.random() * 6,
+      size: 4 + Math.random() * 6,
+      color: ["#ff3b3b","#ffd93b","#3bff7a","#3bb6ff","#c63bff"][Math.floor(Math.random()*5)],
+      rot: Math.random() * Math.PI * 2,
+      vrot: (Math.random()-0.5)*0.3
+    });
+  }
+
+  const start = performance.now();
+  function step(now) {
+    const t = now - start;
+    // semi-transparent layer keeps player visible but shows confetti
+    overlayCtx.clearRect(0,0,w,h);
+    drawBoy(); // re-draw boy so confetti overlays around
+    for (let p of particles) {
+      p.x += p.vx;
+      p.y += p.vy;
+      p.vy += 0.01; // gravity
+      p.rot += p.vrot;
+      overlayCtx.save();
+      overlayCtx.translate(p.x, p.y);
+      overlayCtx.rotate(p.rot);
+      overlayCtx.fillStyle = p.color;
+      overlayCtx.fillRect(-p.size/2, -p.size/2, p.size, p.size*0.6);
+      overlayCtx.restore();
+    }
+    if (t < duration) {
+      requestAnimationFrame(step);
+    } else {
+      // end: clear confetti but keep drawing boy + green stroke if on path
+      drawScene();
+    }
+  }
+  requestAnimationFrame(step);
+}
+
+function triggerCelebration() {
+  if (celebrationActive) return;
+  celebrationActive = true;
+
+  // play small melody (3 short tones)
+  playWinTone(220);
+  setTimeout(()=> playWinTone(180), 220);
+  setTimeout(()=> playWinTone(400), 420);
+
+  // stronger vibration if controller supports it
+  tryVibrateGamepad(800, 1.0, 1.0);
+
+  // confetti
+  launchConfetti(2800, 140);
+
+  // small visual flash on overlay (optional)
+  overlayCtx.save();
+  overlayCtx.fillStyle = "rgba(255,255,255,0.12)";
+  overlayCtx.fillRect(0,0,overlayCanvas.width, overlayCanvas.height);
+  overlayCtx.restore();
+
+  // reset celebration flag after a bit so it can re-trigger if player leaves and returns
+  setTimeout(() => { celebrationActive = false; }, 3500);
+}
+
+
 
 // -------- إعداد التحكم (كيبورد، أزرار على الشاشة، لمس/سوايب) --------
 function setupControls() {
@@ -386,7 +522,6 @@ init();
 
 
 
-
 // // ---------------- full script.js (final) ----------------
 
 // // fullPath array (كل الإحداثيات اللى بعتيها)
@@ -459,7 +594,7 @@ init();
 // const mazeCtx = mazeCanvas.getContext("2d", { willReadFrequently: true });
 // const overlayCtx = overlayCanvas.getContext("2d");
 
-// let player = { x: 330, y: 50, speed: 0.4 };
+// let player = { x: 330, y: 50, speed: 0.8 };
 // const SCALE = 0.7;
 // const SPRITE_SIZE = 50;
 // const SPRITE_HALF = SPRITE_SIZE / 2;
@@ -480,6 +615,10 @@ init();
 // let touchDir = null;
 // const touchThreshold = 15;
 // const touchSpeedMultiplier = 1.0;
+
+// // -------- GAMEPAD variables (added) --------
+// let gamepadIndex = null;
+// const GAMEPAD_AXIS_THRESHOLD = 0.35; // threshold for analog stick
 
 // // -------- helper لتحميل الصور --------
 // function loadImage(src) {
@@ -507,7 +646,7 @@ init();
 //     drawScene();
 //     setupControls();
 
-//     // ابدأ حلقة الأنيميشن اللي تتعامل مع الضغط الطويل/اللمس
+//     // start animation loop that handles long-press/touch and gamepad
 //     requestAnimationFrame(animate);
 //   } catch (err) {
 //     console.error(err);
@@ -594,8 +733,46 @@ init();
 //   return dist <= 12;
 // }
 
+// // -------- GAMEPAD handling (added) --------
+// window.addEventListener("gamepadconnected", (e) => {
+//   console.log("Gamepad connected:", e.gamepad);
+//   gamepadIndex = e.gamepad.index;
+// });
+
+// window.addEventListener("gamepaddisconnected", (e) => {
+//   console.log("Gamepad disconnected");
+//   // if same index disconnected, clear
+//   if (gamepadIndex === e.gamepad.index) gamepadIndex = null;
+// });
+
+// function pollGamepadToKeys() {
+//   if (gamepadIndex === null) return;
+
+//   const gp = navigator.getGamepads ? navigator.getGamepads()[gamepadIndex] : null;
+//   if (!gp) return;
+
+//   // Buttons: standard mapping - D-Pad usually buttons 12..15
+//   const up = gp.buttons[12] && gp.buttons[12].pressed;
+//   const down = gp.buttons[13] && gp.buttons[13].pressed;
+//   const left = gp.buttons[14] && gp.buttons[14].pressed;
+//   const right = gp.buttons[15] && gp.buttons[15].pressed;
+
+//   // Axes: left stick 0 (x), 1 (y)
+//   const ax = gp.axes && gp.axes.length > 0 ? gp.axes[0] : 0;
+//   const ay = gp.axes && gp.axes.length > 1 ? gp.axes[1] : 0;
+
+//   // map to keysDown (set true/false)
+//   if (up || ay < -GAMEPAD_AXIS_THRESHOLD)   keysDown["ArrowUp"] = true;  else keysDown["ArrowUp"] = false;
+//   if (down || ay > GAMEPAD_AXIS_THRESHOLD)  keysDown["ArrowDown"] = true; else keysDown["ArrowDown"] = false;
+//   if (left || ax < -GAMEPAD_AXIS_THRESHOLD) keysDown["ArrowLeft"] = true; else keysDown["ArrowLeft"] = false;
+//   if (right || ax > GAMEPAD_AXIS_THRESHOLD)keysDown["ArrowRight"] = true; else keysDown["ArrowRight"] = false;
+// }
+
 // // -------- حلقة أنيميشن للحركة المستمرة --------
 // function animate() {
+//   // poll gamepad each frame (keeps keysDown in sync)
+//   pollGamepadToKeys();
+
 //   let moved = false;
 
 //   // keyboard continuous
@@ -650,7 +827,7 @@ init();
 //   window.addEventListener("keydown", e => {
 //     if (["ArrowUp","ArrowDown","ArrowLeft","ArrowRight"].includes(e.key)) {
 //       keysDown[e.key] = true;
-//       e.preventDefault(); // يمنع السك롤 الافتراضي
+//       e.preventDefault(); // يمنع السكрол الافتراضي
 //     }
 //   });
 //   window.addEventListener("keyup", e => {
